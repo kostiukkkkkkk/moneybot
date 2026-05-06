@@ -6,6 +6,14 @@ import threading
 from datetime import datetime
 from telebot import types
 
+def run_server():
+    port = int(os.environ.get("PORT", 8080))
+    handler = http.server.SimpleHTTPRequestHandler
+    with socketserver.TCPServer(("", port), handler) as httpd:
+        httpd.serve_forever()
+
+threading.Thread(target=run_server, daemon=True).start()
+
 Token = '8286392310:AAFQQn1EC7458k47BMhuGCnSvK8pQ7I-Mf0'
 bot = telebot.TeleBot(Token)
 
