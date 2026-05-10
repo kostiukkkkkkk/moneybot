@@ -50,6 +50,7 @@ def read_status(user_id):
     return user_expenses
 
 @bot.message_handler(commands=['start'])
+bot.message_handler(func=lambda message: message.text == "🏠/start")
 def start(message):
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
