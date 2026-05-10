@@ -15,15 +15,7 @@ def get_db_connection():
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS expenses(
-            id SERIAL PRIMARY KEY,
-            user_id BIGINT,
-            amount FLOAT,
-            description TEXT,
-            date_now TEXT
-        )
-    """)
+    cur.execute("CREATE TABLE IF NOT EXISTS expenses(id SERIAL PRIMARY KEY, user_id BIGINT, amount FLOAT, description TEXT, date_now TEXT)")
     conn.commit()
     cur.close()
     conn.close()
