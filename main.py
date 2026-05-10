@@ -15,10 +15,8 @@ def get_db_connection():
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute(
-            """
-        CREATE TABLE IF NOT EXISTS expenses
-        (
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS expenses(
             id SERIAL PRIMARY KEY,
             user_id BIGINT,
             amount FLOAT,
@@ -69,7 +67,7 @@ def start(message):
     markup.add(btn_start, btn_stats, btn_clear)
 
     bot.send_message(message.chat.id, "Оновлено!", reply_markup=markup)
-    
+
     bot.send_message(message.chat.id,
                      "💰 **Бот-баланс готовий!**\n\n"
                      "Просто пиши суму та опис, наприклад:\n"
