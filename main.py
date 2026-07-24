@@ -85,7 +85,7 @@ def read_status(user_id):
     return user_expenses
 
 @bot.message_handler(commands=['start'])
-@@ -43,8 +65,11 @@ def start(message):
+@ -43,8 +65,11 @ def start(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     btn_stats = types.KeyboardButton("📊 /stats")
     btn_clear = types.KeyboardButton("🗑 /clear")
@@ -98,7 +98,7 @@ def read_status(user_id):
     bot.send_message(message.chat.id,
                      "💰 **Бот-баланс готовий!**\n\n"
                      "Просто пиши суму та опис, наприклад:\n"
-@@ -102,8 +127,12 @@ def show_stats(message):
+@ -102,8 +127,12 @ def show_stats(message):
 @bot.message_handler(commands=['clear'])
 @bot.message_handler(func=lambda message: message.text == "🗑 /clear")
 def clear_stats(message):
@@ -113,7 +113,7 @@ def clear_stats(message):
     bot.send_message(message.chat.id, "🗑 Історію очищено.")
 
 @bot.message_handler(func=lambda message: True)
-@@ -115,7 +144,7 @@ def add_expense(message):
+@ -115,7 +144,7 @ def add_expense(message):
         amount = float(parts[0].replace(',', '.'))
         description = parts[1] if len(parts) > 1 else "без опису"
 
@@ -122,7 +122,7 @@ def clear_stats(message):
 
         status = "✅ Дохід" if amount > 0 else "📉 Витрата"
         bot.send_message(message.chat.id, f"{status} додано!")
-@@ -125,4 +154,5 @@ def add_expense(message):
+@ -125,4 +154,5 @ def add_expense(message):
         bot.send_message(message.chat.id, "❌ Помилка! Пиши: сума опис напр. -100 обід)")
 
 if __name__ == "__main__":
