@@ -1,89 +1,104 @@
-import telebot
 import os
 import psycopg2
 from datetime import datetime
+from dotenv import load_dotenv
+import telebot
 from telebot import types
 
-DB_URL = "postgresql://money_db_ujl7_user:Qncte8lVtEfZbNNwcheGMaLKMQ3fpkYd@dpg-d7vss4po3t8c73d8c2n0-a/money_db_ujl7"
+load_dotenv()
 
-Token = '8286392310:AAFQQn1EC7458k47BMhuGCnSvK8pQ7I-Mf0'
-bot = telebot.TeleBot(Token)
+TOKEN = os.getenv("BOT_TOKEN")
+DB_URL = os.getenv("DATABASE_URL")
+
+if not TOKEN or not DB_URL:
+    raise ValueError("Помилка: не задано BOT_TOKEN або DATABASE_URL у змінних оточення!")
+
+bot = telebot.TeleBot(TOKEN)
 
 def get_db_connection():
     return psycopg2.connect(DB_URL)
 
 def init_db():
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("CREATE TABLE IF NOT EXISTS expenses(id SERIAL PRIMARY KEY,user_id BIGINT,amount FLOAT,description TEXT,date_now TEXT)")
-    conn.commit()
-    cur.close()
-    conn.close()
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS expenses(
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT,
+                    amount FLOAT,
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
 
 init_db()
 
 def save_to_db(user_id, amount, desc):
-    conn = get_db_connection()
-    cur = conn.cursor()
-    date_now = datetime.now().strftime("%d.%m.%Y %H:%M")
-    cur.execute("INSERT INTO expenses (user_id, amount, description, date_now) VALUES (%s, %s, %s, %s)",(user_id, amount, desc, date_now))
-    conn.commit()
-    cur.close()
-    conn.close()
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO expenses (user_id, amount, description) VALUES (%s, %s, %s)",
+                (user_id, amount, desc)
+            )
 
-def read_status(user_id):
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT amount, description, date_now FROM expenses WHERE user_id = %s", (user_id,))
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-    return [{'amount': row[0],'desc': row[1],'date': row[2]} for row in rows]
+def read_monthly_stats(user_id):
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT amount, description, created_at 
+                FROM expenses 
+                WHERE user_id = %s 
+                  AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)
+                ORDER BY created_at DESC
+            """, (user_id,))
+            rows = cur.fetchall()
+            return [{'amount': row[0], 'desc': row[1], 'date': row[2]} for row in rows]
 
 @bot.message_handler(commands=['start'])
 @bot.message_handler(func=lambda message: message.text == "🏠/start")
 def start(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-
-    bot.send_message(message.chat.id, "Оновлено!", reply_markup=markup)
-    markup.add(types.KeyboardButton("🏠/start"), types.KeyboardButton("📊 /stats"), types.KeyboardButton("🗑 /clear"))
-    bot.send_message(message.chat.id, "💰 **Бот-баланс готовий!**\n\n" "Просто пиши суму та опис, наприклад:\n" "`+1000 зарплата` або `-50 кава`", reply_markup=markup, parse_mode='Markdown')
+    markup.add(
+        types.KeyboardButton("🏠/start"), 
+        types.KeyboardButton("📊 /stats"), 
+        types.KeyboardButton("🗑 /clear")
+    )
+    bot.send_message(
+        message.chat.id, 
+        "💰 **Бот-баланс готовий!**\n\n"
+        "Просто пиши суму та опис, наприклад:\n"
+        "`+1000 зарплата` або `-50 кава`", 
+        reply_markup=markup, 
+        parse_mode='Markdown'
+    )
 
 @bot.message_handler(func=lambda message: message.text in ["📊 /stats", "/stats"])
 def show_stats(message):
-    data = read_status(message.chat.id)
-    if not data:
-        bot.send_message(message.chat.id, "Історія порожня")
-        return
-    now = datetime.now()
-    months_ua ={
-        1: "Січень", 2: "Лютий", 3:"Березень", 4: "Квітень",
-        5: "Травень", 6: "Червень", 7: "Липень", 8: "Серпень",
-        9: "Вересень", 10: "Жовтень", 11: "Листопад", 12: "Грудень",
-    }
-    month_name = months_ua[now.month]
-    year = now.year
-
-    current_month_year = now.strftime(".%m.%Y")
-    this_month_data = [item for item in data if current_month_year in item['date']]
-
+    this_month_data = read_monthly_stats(message.chat.id)
     if not this_month_data:
-        bot.send_message(message.chat.id, f"📅 У місяці **{now.strftime('%B')}** записів ще немає.")
+        bot.send_message(message.chat.id, "📅 У цьому місяці записів ще немає.")
         return
 
-    income = sum(item['amount'] for item in data if item['amount'] > 0)
-    expenses = sum(item['amount'] for item in data if item['amount'] < 0)
+    now = datetime.now()
+    months_ua = {
+        1: "Січень", 2: "Лютий", 3: "Березень", 4: "Квітень",
+        5: "Травень", 6: "Червень", 7: "Липень", 8: "Серпень",
+        9: "Вересень", 10: "Жовтень", 11: "Листопад", 12: "Грудень"
+    }
+
+    income = sum(item['amount'] for item in this_month_data if item['amount'] > 0)
+    expenses = sum(item['amount'] for item in this_month_data if item['amount'] < 0)
     balance = income + expenses
 
     report_lines = []
     for item in this_month_data:
         sign = "🟢" if item['amount'] > 0 else "🔴"
-        day_month = item['date'][:5]
+        day_month = item['date'].strftime("%d.%m")
         report_lines.append(f"`{day_month}` {sign} {item['amount']} zl - {item['desc']}")
 
     full_report = "\n".join(report_lines)
 
-    response = (f"📅 **Звіт за {month_name} {year}**\n"
+    response = (f"📅 **Звіт за {months_ua[now.month]} {now.year}**\n"
                 f"━━━━━━━━━━━━━━━\n"
                 f"{full_report}\n"
                 f"━━━━━━━━━━━━━━━\n"
@@ -96,17 +111,14 @@ def show_stats(message):
 @bot.message_handler(commands=['clear'])
 @bot.message_handler(func=lambda message: message.text == "🗑 /clear")
 def clear_stats(message):
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM expenses WHERE user_id = %s", (message.chat.id,))
-    conn.commit()
-    cur.close()
-    conn.close()
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM expenses WHERE user_id = %s", (message.chat.id,))
     bot.send_message(message.chat.id, "🗑 Історію очищено.")
 
 @bot.message_handler(func=lambda message: True)
 def add_expense(message):
-    if message.text in ["📊 /stats", "🗑 /clear"]:
+    if message.text in ["📊 /stats", "🗑 /clear", "🏠/start"]:
         return
     try:
         parts = message.text.strip().split(maxsplit=1)
@@ -119,8 +131,7 @@ def add_expense(message):
         bot.send_message(message.chat.id, f"{status} додано!")
 
     except Exception as e:
-        print(e)
-        bot.send_message(message.chat.id, "❌ Помилка! Пиши: сума опис напр. -100 обід)")
+        bot.send_message(message.chat.id, "❌ Помилка! Пиши: сума опис (напр. `-100 обід`)")
 
 if __name__ == "__main__":
     bot.remove_webhook(drop_pending_updates=True)
