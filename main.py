@@ -1,9 +1,24 @@
 import os
+import threading
 import psycopg2
 from datetime import datetime
 from dotenv import load_dotenv
+from flask import Flask
 import telebot
 from telebot import types
+
+app = Flask(__name__)
+
+@app.route('/')
+def health_check():
+    return "Bot is running!", 200
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
+
+threading.Thread(target=run_flask, daemon=True).start()
+
 
 load_dotenv()
 
@@ -11,7 +26,7 @@ TOKEN = os.getenv("BOT_TOKEN")
 DB_URL = os.getenv("DATABASE_URL")
 
 if not TOKEN or not DB_URL:
-    raise ValueError("Помилка: не задано BOT_TOKEN або DATABASE_URL у змінних оточення!")
+    raise ValueError("Помилка: відсутній BOT_TOKEN або DATABASE_URL у змінних оточення!")
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -65,9 +80,7 @@ def start(message):
     )
     bot.send_message(
         message.chat.id, 
-        "💰 **Бот-баланс готовий!**\n\n"
-        "Просто пиши суму та опис, наприклад:\n"
-        "`+1000 зарплата` або `-50 кава`", 
+        "💰 **Бот-баланс готовий!**\n\nПросто пиши суму та опис:\n`+1000 зарплата` або `-50 кава`", 
         reply_markup=markup, 
         parse_mode='Markdown'
     )
@@ -126,11 +139,10 @@ def add_expense(message):
         description = parts[1] if len(parts) > 1 else "без опису"
 
         save_to_db(message.chat.id, amount, description)
-
         status = "✅ Дохід" if amount > 0 else "📉 Витрата"
         bot.send_message(message.chat.id, f"{status} додано!")
 
-    except Exception as e:
+    except Exception:
         bot.send_message(message.chat.id, "❌ Помилка! Пиши: сума опис (напр. `-100 обід`)")
 
 if __name__ == "__main__":
