@@ -134,5 +134,5 @@ def add_expense(message):
         bot.send_message(message.chat.id, "❌ Помилка! Пиши: сума опис (напр. `-100 обід`)")
 
 if __name__ == "__main__":
-    bot.remove_webhook(drop_pending_updates=True)
+    bot.delete_webhook(drop_pending_updates=True)
     bot.polling(none_stop=True)
