@@ -4,7 +4,6 @@ from datetime import datetime
 import telebot
 from telebot import types
 
-# Код автоматично візьме дані з Environment Variables на Render
 DB_URL = os.getenv("DATABASE_URL")
 TOKEN = os.getenv("BOT_TOKEN")
 
