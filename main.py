@@ -1,6 +1,10 @@
 import os
 import threading
 import psycopg2
+import io
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 from datetime import datetime
 from dotenv import load_dotenv
 from flask import Flask
@@ -19,9 +23,7 @@ def run_flask():
 
 threading.Thread(target=run_flask, daemon=True).start()
 
-
 load_dotenv()
-
 TOKEN = os.getenv("BOT_TOKEN")
 DB_URL = os.getenv("DATABASE_URL")
 
@@ -45,14 +47,13 @@ def init_db():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-
 init_db()
 
 def save_to_db(user_id, amount, desc):
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO expenses (user_id, amount, description) VALUES (%s, %s, %s)",
+                "INSERT INTO expenses(user_id, amount, description) VALUES (%s, %s, %s)",
                 (user_id, amount, desc)
             )
 
@@ -60,28 +61,66 @@ def read_monthly_stats(user_id):
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT amount, description, created_at 
+                SELECT amount, description, created_at
                 FROM expenses 
-                WHERE user_id = %s 
+                WHERE user_id = %s
                   AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)
                 ORDER BY created_at DESC
             """, (user_id,))
             rows = cur.fetchall()
             return [{'amount': row[0], 'desc': row[1], 'date': row[2]} for row in rows]
 
+def generate_chart(user_id):
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT description, SUM(ABS(amount))
+                FROM expenses
+                WHERE user_id = %s
+                  AND amount < 0
+                  AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)
+                GROUP BY description
+            """, (user_id,))
+            rows = cur.fetchall()
+
+    if not rows:
+        return None
+
+    categories = [row[0] for row in rows]
+    amounts = [row[1] for row in rows]
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ax.pie(
+        amounts,
+        labels=categories,
+        autopct='%1.1f%%',
+        startangle=140,
+        colors=['#ff9999', '#66b3ff', '#99ff99', '#ffcc99', '#c2c1f0', '#ffb3e6']
+    )
+    ax.axis('equal')
+    plt.title("Розподіл витрат за цей місяць", fontsize=14)
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', bbox_inches='tight')
+    buf.seek(0)
+    plt.close(fig)
+
+    return buf
+
 @bot.message_handler(commands=['start'])
 @bot.message_handler(func=lambda message: message.text == "🏠/start")
 def start(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(
-        types.KeyboardButton("🏠/start"), 
-        types.KeyboardButton("📊 /stats"), 
+        types.KeyboardButton("🏠/start"),
+        types.KeyboardButton("📊 /stats"),
+        types.KeyboardButton("📈 /chart"),
         types.KeyboardButton("🗑 /clear")
     )
     bot.send_message(
-        message.chat.id, 
-        "💰 **Бот-баланс готовий!**\n\nПросто пиши суму та опис:\n`+1000 зарплата` або `-50 кава`", 
-        reply_markup=markup, 
+        message.chat.id,
+        "💰 **Бот-баланс готовий!**\n\nПросто пиши суму та опис:\n`+1000 зарплата` або `-50 кава`",
+        reply_markup=markup,
         parse_mode='Markdown'
     )
 
@@ -121,6 +160,14 @@ def show_stats(message):
 
     bot.send_message(message.chat.id, response, parse_mode='Markdown')
 
+@bot.message_handler(func=lambda message: message.text in ["📈 /chart", "/chart"])
+def show_chart(message):
+    chart_buf = generate_chart(message.chat.id)
+    if chart_buf:
+        bot.send_photo(message.chat.id, chart_buf, caption="📊 Твої витрати за категоріями")
+    else:
+        bot.send_message(message.chat.id, "📊 У цьому місяці ще немає витрат для побудови графіка!")
+
 @bot.message_handler(commands=['clear'])
 @bot.message_handler(func=lambda message: message.text == "🗑 /clear")
 def clear_stats(message):
@@ -131,7 +178,7 @@ def clear_stats(message):
 
 @bot.message_handler(func=lambda message: True)
 def add_expense(message):
-    if message.text in ["📊 /stats", "🗑 /clear", "🏠/start"]:
+    if message.text in ["📊 /stats", "🗑 /clear", "🏠/start", "📈 /chart"]:
         return
     try:
         parts = message.text.strip().split(maxsplit=1)
