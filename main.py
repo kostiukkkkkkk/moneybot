@@ -190,7 +190,7 @@ def add_expense(message):
         bot.send_message(message.chat.id, f"{status} додано!")
 
     except Exception:
-        bot.send_message(message.chat.id, "❌ Помилка! Пиши: сума опис (напр. `-100 обід`)")
+        bot.send_message(message.chat.id, "❌ Помилка! Пиши: сума опис (напр. -100 обід)")
 
 if __name__ == "__main__":
     bot.delete_webhook(drop_pending_updates=True)
